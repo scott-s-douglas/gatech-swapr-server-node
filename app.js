@@ -11,6 +11,7 @@ var routes = require('./routes/index');
 var users = require('./routes/users');
 var courses = require('./routes/courses');
 var apiAuth = require('./routes/api-auth');
+var casLogin = require('./routes/cas-auth');
 
 var models = require('./models');
 
@@ -31,6 +32,8 @@ app.use('/', routes);
 app.use('/swaprusers', users);
 app.use('/courses', courses);
 app.use('/api-token-auth', apiAuth);
+
+app.use('/cas-auth', casLogin);
 
 // use EJS as the default view engine
 app.set('view engine', 'ejs');
