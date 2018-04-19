@@ -1,208 +1,72 @@
-var debug = require('debug')('instructorController');
-var models = require('../models');
+var models = require('../db/models');
+var bcrypt = require('bcrypt-nodejs');
+var jwt = require('jsonwebtoken');
+var validator = require('email-validator');
+var logger = require('../util/logger');
 
-module.exports.createCourse = function(req, res) {
-
-  if (typeof req.body.name !== 'string' || isNaN(req.body.institute)) {
-      return res.status(500).send({ 'error': 'unable to create new course' });
-  }
-
-  //var Institute = models.Course.belongsTo(models.Institute, {as: 'school'});
-
-  debug("Name: " + req.body.name)
-  models.Course.create({
-      "name": req.body.name,
-      "InstituteId": req.body.institute,
-      "institute": {
-          "id": req.body.institute
-      }
-  }).then(function(created) {
-      debug("Created:")
-      debug(created);
-      var result = {
-          "id": created.id,
-          "name": created.name,
-          "InstituteId": created.InstituteId
-      }
-      return res.status(201).send(result);
-  }).catch(function(error) {
-      debug(error);
-      return res.status(500).send({ 'error': 'unable to create new course' });
-  })
-};
-
-module.exports.getCourse = function(req, res) {
-    if (isNaN(req.params.courseID)) {
-        return res.status(400).send({ 'error': 'invalid course id' });
+module.exports.createInstructor = function(username, first_name, last_name, email, password, callback) {
+    if (username == null || first_name == null || last_name == null || email == null || password == null) {
+        return callback({'status': 400, 'message': {'error': 'unable to create new instructor'}});
+    }
+    if (username == '' || first_name == '' || last_name == '' || email == '' || password == '') {
+        return callback({'status': 400, 'message': {'error': 'unable to create new instructor'}});
+    }
+    if (typeof username !== 'string' || typeof first_name !== 'string' || typeof last_name !== 'string' ||
+            typeof email !== 'string' || typeof password !== 'string') {
+        return callback({'status': 400, 'message': {'error': 'unable to create new instructor'}});
+    }
+    if (!validator.validate(email)) {
+        return callback({'status': 400, 'message': {'error': 'unable to create new instructor'}});
     }
 
-    models.Course.findOne({'where': {'id': parseInt(req.params.courseID)}}).then(function(course) {
-        var result = {
-            "id": course.id,
-            "name": course.name,
-            "InstituteId": course.InstituteId
-        }
-        return res.status(201).send(result);
-    }).catch(function(error) {
-        debug(error);
-        return res.status(500).send({ 'error': 'could not get a course' });
-    });
-};
-
-module.exports.getAllCourses = function(req, res) {
-
-    models.Course.findAll().then(function(courses) {
-        var courseList = courses.map(function(course) {
-            return {
-                "id": course.id,
-                "name": course.name,
-                "InstituteId": course.InstituteId
+    // Check that no one else has claimed this username or email address
+    models.User.findOne({'where': { '$or': [
+        {'username': username},
+        {'email': email}
+    ] }}).then(function(exists) {
+        if (exists) {
+            var error = 'email address in use';
+            if (exists.username === username) {
+                error = 'username in use';
             }
-        });
-        return res.status(201).send(courseList);
 
-    }).catch(function(error) {
-        return res.status(400).send({ 'error': 'could not get all courses' });
-    })
-};
-
-module.exports.createSession = function(req, res) {
-    if (isNaN(req.params.courseID)) {
-        return res.status(400).send({ 'error': 'invalid course id' });
-    }
-    models.Session.create({
-        "name": req.body.name,
-        "startDate": req.body.startDate,
-        "endDate": req.body.endDate,
-        "CourseId": parseInt(req.params.courseID)
-    }).then(function(newSession) {
-        var response = {
-            "id": newSession.id,
-            "name": newSession.name,
-            "startDate": newSession.startDate,
-            "endDate": newSession.endDate,
-            "CourseId": newSession.CourseId
+            return callback({'status': 400, 'message': {'error': error}});
         }
-        return res.status(201).send(response);
-    }).catch(function(error) {
-        return res.status(500).send({ 'error': 'could not create a session' });
-    });
-};
 
-module.exports.enrollInSession = function(req, res) {
-    if (isNaN(req.params.courseID) || isNaN(req.params.sessionID)) {
-        return res.status(400).send({ 'error': 'Unable to enroll in session' })
-    }
-    models.User.findAll({ 'where': {
-        'username': { '$in': req.body.students}
-    }}).then(function(students) {
-        debug("Students: ");
-        debug(students);
-        var enrollments = students.map(function(student) {
-            return {
-                'SessionId': parseInt(req.params.sessionID),
-                'UserId': student.id
-            }
-        });
-        models.SessionEnrollment.bulkCreate(enrollments).then(function(sessionEnrollments) {
-            debug('Finished enrollment');
-            sessionEnrollments.forEach(function(s) {
-                debug(s);
-            })
+        var instructor = {
+            'username': username,
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email,
+            'role': 'instructor'
+        };
 
-            models.Session.findOne({ 'where': { 'id': parseInt(req.params.sessionID) }}).then(function(theSession) {
-                debug('Session: ');
-                debug(theSession);
-                models.SessionEnrollment.findAll({ 'where': {'SessionId': parseInt(req.params.sessionID)}}).then(function(allEnrollments) {
-                    debug("done");
-                    var response = {
-                        "id": theSession.id,
-                        "CourseId": theSession.CourseId,
-                        "startDate": theSession.startDate,
-                        "endDate": theSession.endDate,
-                        "students": allEnrollments.map(function(e) {
-                            return e.UserId;
-                        })
+        // Hash the password and create a token
+        bcrypt.genSalt(5, function(err, salt) {
+            if (err) { return callback({'status': 500, 'message': {'error': 'unable to create new instructor'}}); }
+            bcrypt.hash(password, salt, null, function (err, hash) {
+                if (err) { return callback({'status': 500, 'message': {'error': err}}); }
+                instructor['password']= hash;
+                instructor['token'] = jwt.sign(instructor, 'app_secret');
+
+                models.User.create(instructor).then(function(created){
+                    var result = {
+                        'username': created.username,
+                        'first_name': created.first_name,
+                        'last_name': created.last_name,
+                        'id': created.id,
+                        'email': created.email,
+                        'role': created.role
                     };
-                    return res.status(201).send(response);
+                    return callback(null, result);
                 }).catch(function(error) {
-                    debug(error)
-                    return res.status(400).send({ 'error': 'could not complete enrollment'});
-                })
-            }).catch(function(error) {
-                debug(error);
-                return res.status(400).send({ 'error': 'Unable to enroll in courses' });
-            })
-        }).catch(function(error) {
-            debug(error);
-            return res.status(400).send({ 'error': 'Unable to enroll in courses' });
-        })
-    }).catch(function(error) {
-        debug(error);
-        return res.status(400).send({ 'error': 'Unable to enroll in courses' });
-    });
-};
-
-module.exports.getSession = function(req, res) {
-    if (isNaN(req.params.courseID) || isNaN(req.params.sessionID)) {
-        return res.status(400).send({ 'error': 'invalid id input' });
-    }
-    models.Session.findOne({ 'where': { 'id': parseInt(req.params.sessionID) } }).then(function(aSession) {
-        models.SessionEnrollment.findAll({ 'where': { 'SessionId': parseInt(req.params.sessionID) } }).then(function(enrollments) {
-            var result = {
-              "id": aSession.id,
-              "name": aSession.name,
-              "startDate": aSession.startDate,
-              "endDate": aSession.endDate,
-              "CourseId": aSession.CourseId,
-              "students": enrollments.map(function(d) {
-                  return d.UserId;
-              })
-            };
-            return res.status(201).send(result);
-        }).catch(function(error) {
-            return res.status(400).send({ 'error': 'could not retrieve the course'});
-        })
-    }).catch(function(error) {
-        debug(error);
-        return res.status(400).send({ 'error': 'could not retrieve the course'});
-    });
-};
-
-module.exports.getSessions = function(req, res) {
-    if (isNaN(req.params.courseID)) {
-        return res.status(400).send({ "error": "Invalid input" });
-    }
-    models.Session.findAll({ 'where': { 'CourseId': parseInt(req.params.courseID) } }).then(function(sessions) {
-        var sessionIDs = sessions.map(function(d) {
-            return d.id;
-        });
-        models.SessionEnrollment.findAll({
-            'where': {
-                'SessionId': {
-                    '$in': sessionIDs
-                }
-            }
-        }).then(function(enrollments) {
-            var result = sessions.map(function(d) {
-                return {
-                  "id": d.id,
-                  "name": d.name,
-                  "startDate": d.startDate,
-                  "endDate": d.endDate,
-                  "CourseId": d.CourseId,
-                  "students": enrollments.filter(function(s) {
-                      return s.SessionId === d.id;
-                  }).map(function(s) {
-                      return s.UserId;
-                  })
-                };
+                    logger.error(error);
+                    return callback({'status': 500, 'message': {'error': 'unable to create new instructor'}});
+                });
             });
-            return res.status(201).send(result);
-        }).catch(function(error) {
-            return res.status(400).send({ 'error': 'could not get the sessions' });
-        })
+        });
     }).catch(function(error) {
-        return res.status(400).send({ 'error': 'could not get the sessions' });
-    })
+        logger.error(error);
+        return callback({'status': 500, 'message': {'error': 'unable to create new instructor'}});
+    });
 };

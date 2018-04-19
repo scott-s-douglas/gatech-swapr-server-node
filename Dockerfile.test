@@ -1,0 +1,26 @@
+# Use Ubuntu as base image
+FROM node:8.7.0
+
+# Install node dependencies
+RUN npm install yarn
+
+RUN mkdir -p /data/node_modules
+
+# Install node dependencies
+RUN npm install yarn
+
+WORKDIR /data
+COPY package.json yarn.lock /data/
+
+RUN yarn --pure-lockfile
+
+ENV PATH /data/node_modules/.bin:$PATH
+
+RUN mkdir -p /data/app
+
+ADD . /data/app
+WORKDIR /data/app
+
+RUN chmod 777 /data/app
+
+CMD ["yarn", "run", "--modules-folder /data/node_modules", "docker-test"]

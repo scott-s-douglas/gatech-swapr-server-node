@@ -1,30 +1,90 @@
 var express = require('express');
 var router = express.Router();
-var instructorController = require('../controllers/instructorController');
-
-/* List ALL Courses */
-router.route('/')
-  .get(instructorController.getAllCourses);
+var courseController = require('../controllers/courseController');
+var sessionController = require('../controllers/sessionController');
+var passport = require('passport');
 
 /* Create Course */
 router.route('/')
-  .post(instructorController.createCourse);
+    .post(passport.authenticate('bearer', {session: false}), function(req, res) {
+        courseController.createCourse(req.body.name, req.body.institute,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.status(201).send(token);
+            });
+    });
 
 /* Retrieve a Course */
-router.route('/:courseID')
-  .get(instructorController.getCourse);
+router.route('/:course_id')
+    .get(passport.authenticate('bearer', {session: false}), function(req, res) {
+        courseController.getCourse(req.params.course_id,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.send(token);
+            });
+    });
 
-router.route('/:courseID/sessions')
-  .post(instructorController.createSession);
+/* List ALL Courses */
+router.route('/')
+    .get(passport.authenticate('bearer', {session: false}), function(req, res) {
+        courseController.getAllCourses(function(err, token) {
+            if (err) {
+                return res.status(err.status).send(err.message);
+            }
+            return res.send(token);
+        });
+    });
 
-router.route('/:courseID/sessions')
-  .get(instructorController.getSessions);
+/* Create a Course Session */
+router.route('/:course_id/sessions')
+    .post(passport.authenticate('bearer', {session: false}), function(req, res) {
+        sessionController.createSession(req.params.course_id, req.body.name, req.body.start_date, req.body.end_date,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.send(token);
+            });
+    });
 
-router.route('/:courseID/sessions/:sessionID')
-  .post(instructorController.enrollInSession);
+/* Enroll in a Particular Course Session */
+router.route('/:course_id/sessions/:session_id')
+    .post(passport.authenticate('bearer', {session: false}), function(req, res) {
+        sessionController.enrollInSession(req.params.course_id, req.body.students. req.params.session_id,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.send(token);
+            });
+    });
 
-router.route('/:courseID/sessions/:sessionID')
-    .get(instructorController.getSession);
+/* Retrieve a Particular Course Session */
+router.route('/:course_id/sessions/:session_id')
+    .get(passport.authenticate('bearer', {session: false}), function(req, res) {
+        sessionController.getSession(req.params.course_id, req.params.session_id,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.send(token);
+            });
+    });
 
+/* List ALL Sessions of a Course */
+router.route('/:course_id/sessions')
+    .get(passport.authenticate('bearer', {session: false}), function(req, res) {
+        sessionController.getSessions(req.params.course_id,
+            function(err, token) {
+                if (err) {
+                    return res.status(err.status).send(err.message);
+                }
+                return res.send(token);
+            });
+    });
 
 module.exports = router;

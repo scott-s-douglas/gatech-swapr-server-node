@@ -3,55 +3,95 @@ var LocalStrategy = require('passport-local').Strategy;
 var BearerStrategy = require('passport-http-bearer').Strategy;
 var CASStrategy = require('passport-cas').Strategy;
 var bcrypt = require('bcrypt-nodejs');
+var models = require('../db/models');
+var logger = require('../util/logger');
 
-// needs to be converted to sequelize, we don't db anymore
-passport.use(new LocalStrategy(
+var config = require('./config.json');
+
+/*passport.use(new LocalStrategy(
     function(username, password, done) {
-        db.all("SELECT * FROM id_map WHERE username = '" + username + "'", function(err, row) {
-            if (err) { return done(error); }
-            if (!row) {
+        models.User.findOne({'where': { 'username': username }}).then(function(user) {
+            if (!user) {
                 return done(null, false, {message: 'No such username'});
             } else {
-                bcrypt.compare(password, row.pwd_hash, function(err, res) {
+                bcrypt.compare(password, user.password, function(err, res) {
                     if (res) {
-                        var user = {username: row.username, token: row.token};
-                        return done(null, user);
+                        var result = {'username': user.username, 'token': user.token};
+                        return done(null, result);
                     } else {
                         return done(null, false, {message: 'Incorrect password'});
                     }
                 });
             }
+        }).catch(function(err) {
+            return done(err);
+        });
+    }
+));*/
+passport.use(new LocalStrategy(
+    function(username, password, done) {
+        models.User.findOne({'where': {'username': username}}).then(function(user) {
+            if (!user) {
+                done(null, false, {message: 'No such username'});
+            } else {
+                /*bcrypt.compare(password, user.password, function(err, res) {
+                    if (res) {
+                        var result = {'id': user.id, 'username': user.username, 'token': user.token};
+                        done(null, result);
+                    } else {
+                        done(null, false, {message: 'Incorrect password'});
+                    }
+                });*/
+                if (password == user.password) {
+                    var result = {'id': user.id, 'username': user.username, 'token': user.token};
+                    done(null, result);
+                } else {
+                    done(null, false, {message: 'Incorrect password'});
+                }
+            }
+        }).catch(function(err) {
+            done(err);
         });
     }
 ));
 
 passport.use(new BearerStrategy(
     function(token, done) {
-        db.all("SELECT * FROM id_map WHERE token = '" + token + "'", function(err, results) {
-            if (err) { return done(err); }
-            if (!results) {
+        models.User.findOne({'where': {'token': token}}).then(function(user) {
+            if (!user) {
                 return done(null, false, {message: 'Unknown user'});
             } else {
                 return done(null, user, { scope: 'all' });
             }
+        }).catch(function(err) {
+            return done(err);
         });
     }
 ));
 
-passport.use(new CASStrategy(
-    {
-    ssoBaseURL: 'https://login.gatech.edu/',
-    serverBaseURL: 'http://localhost:3000'
-    }, 
+passport.use('cas', new CASStrategy(
+    config.cas,
     function(login, done) {
-        User.findOne({login: login}, function (err, user) {
-            if (err) { return done(err); }
+        models.User.findOne({'where': {'username': login}}).then(function(user) {
             if (!user) {
                 return done(null, false, {message: 'Unknown user'});
             }
-        return done(null, user);
+            logger.debug({'casLogin': login});
+            return done(null, user);
+        }).catch(function(err) {
+            return done(err);
         });
     }
 ));
+
+passport.serializeUser = function(user, done) {
+    return done(null, user.id);
+};
+
+passport.deserializeUser = function(id, done) {
+    models.User.findById(id, function(err, user) {
+        return done(err, user);
+    });
+};
 
 module.exports = passport;

@@ -1,0 +1,23 @@
+language: node_js
+
+node_js:
+  - "6"
+  - "8"
+  - "9"
+
+services:
+  - postgresql
+
+env:
+  - NODE_ENV=test DB_USERNAME=postgres DB_PASSWORD="" DB_NAME=swapr_test
+
+before_script:
+  - cp config/config.json.sample config/config.json
+  - psql -c 'create database swapr_test;' -U postgres
+
+addons:
+  hosts:
+    - test-db
+
+notifications:
+  slack: bdvipteam:5dDl4gn1hjGjfzyaGhkLWnRE

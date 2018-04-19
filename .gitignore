@@ -1,3 +1,5 @@
+config/config.json
+logs/
 
 *.h
 
@@ -5,6 +7,6 @@
 
 node_modules/
 npm-debug.log
-.editorconfig
+yarn-error.log
 .DS_Store
 .idea/
